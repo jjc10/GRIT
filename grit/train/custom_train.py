@@ -1,7 +1,7 @@
 import logging
 import time
 from os.path import join
-
+from copy import deepcopy
 import numpy as np
 import torch
 from torch_geometric.graphgym.checkpoint import load_ckpt, save_ckpt, clean_ckpt, get_ckpt_epoch, get_ckpt_path
@@ -175,8 +175,13 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
                         if "running_var" in k:
                             v.data = torch.ones_like(v.data) * 1e3
         else:
+
             for i in range(1, num_splits):
-                perf[i].append(perf[i][-1])
+                perf_for_split = perf[i] # val or test or train
+                if len(perf_for_split) > 0:
+                    perf[i].append(perf[i][-1])
+                else:
+                    perf[i].append(deepcopy(perf[0][-1]))
 
         val_perf = perf[1]
         if cfg.optim.scheduler == 'reduce_on_plateau' or "timm" in cfg.optim.scheduler:
@@ -254,6 +259,8 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
             # Checkpoint the best epoch params (if enabled).
             if cfg.train.enable_ckpt and cfg.train.ckpt_best and \
                     best_epoch == cur_epoch:
+                print("checkpointing!!!!!!!!!!!!!!!!!!!")
+
                 if cur_epoch < cfg.optim.num_warmup_epochs:
                     pass
                 else:

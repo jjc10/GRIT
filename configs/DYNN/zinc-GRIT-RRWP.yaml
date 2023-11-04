@@ -1,10 +1,9 @@
 # Original:  zinc-GRIT-2000.yaml
-out_dir: results
+out_dir: dynn_results
 metric_best: mae
 metric_agg: argmin
 tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
-
 mlflow:
   use: True
   project: Exp
@@ -82,3 +81,6 @@ optim:
   num_warmup_epochs: 1
   scheduler: cosine_with_warmup
   min_lr: 1e-6
+pretrained:
+  dir: results/zinc-GRIT-RRWP
+  freeze_main: True
