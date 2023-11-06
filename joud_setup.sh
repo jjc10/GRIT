@@ -20,3 +20,4 @@ pip install opt_einsum
 pip install graphgym
 pip install pytorch-lightning # required by graphgym
 pip install setuptools==59.5.0
+pip install mlflow
