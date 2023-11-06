@@ -33,6 +33,9 @@ train:
   batch_size: 16
   eval_period: 1
   ckpt_period: 2
+  enable_ckpt: True  # Checkpointing can now be disabled to save I/O when e.g. just benchmarking.
+  ckpt_best: True  # WARNING: Checkpoint every epoch a better model is found may increase I/O significantly.
+  ckpt_clean: True
 model:
   type: GritTransformer
   loss_fun: cross_entropy
