@@ -45,7 +45,7 @@ model:
   graph_pooling: mean
 gt:  # Hyperparameters optimized for ~100k budget.
   layer_type: GritTransformer
-  layers: 6
+  layers: 5
   n_heads: 4
   dim_hidden: 52  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.1
