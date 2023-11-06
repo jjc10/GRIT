@@ -19,26 +19,11 @@ from grit.finetuning import load_pretrained_model_cfg, \
 from dynn_wrapper import DynnWrapper
 from training_helper import LearningHelper
 from main import custom_set_out_dir, new_optimizer_config, new_scheduler_config
+from log_helper import setup_mlflow
+from grit.utils import fix_the_seed
 from torch_geometric.graphgym.checkpoint import get_ckpt_dir, get_ckpt_epoch, get_ckpt_path
-def setup_mlflow(run_name: str, cfg, experiment_name):
-    print(run_name)
-    project = experiment_name
-    mlruns_path = get_abs_path(["mlruns"])
-    mlflow.set_tracking_uri(mlruns_path)
-    mlflow.set_experiment(project)
-    mlflow.start_run(run_name=run_name)
-    mlflow.log_params(cfg)
 
-def get_abs_path(paths_strings):
-    subpath = "/".join(paths_strings)
-    src_abs_path = get_path_to_project_root()
-    return f'{src_abs_path}/{subpath}/'
-
-def get_path_to_project_root():
-    cwd = os.getcwd()
-    root_abs_path_index = cwd.split("/").index("GRIT")
-    return "/".join(os.getcwd().split("/")[:root_abs_path_index + 1])
-
+fix_the_seed(42)
 def parse_args_and_cgf():
     args = parse_args()
     # Load config file
@@ -62,9 +47,9 @@ args, cfg = parse_args_and_cgf()
 loaders = create_loader()
 model = create_model()
 
-init_model_from_pretrained(
+model = init_model_from_pretrained(
     model, cfg.pretrained.dir, cfg.pretrained.freeze_main,
-    False
+    False, freeze_final_head=True
 )
 NUM_CLASSES = 10
 dynn = DynnWrapper(grit_transformer=model.model, head_dim_in = cfg.gt.dim_hidden, head_dim_out = NUM_CLASSES) # graph gym module wraps around the model.
@@ -75,18 +60,14 @@ dynn = dynn.to(cfg.accelerator) # move to gpu
 # logging.info('Num parameters: %s', cfg.params)
 # Start training
 setup_mlflow("warmup", {"a": 1}, "train_dynn")
-optimizer = create_optimizer(dynn.parameters(),
+trainable_params = list(filter(lambda x: x.requires_grad, list(dynn.parameters())))
+named_trainable_params = list(map(lambda x: x[0], filter(lambda x: x[1].requires_grad, list(dynn.named_parameters()))))
+print(f'Trainable params: {named_trainable_params}')
+optimizer = create_optimizer(iter(trainable_params),
                              new_optimizer_config(cfg))
-
-learning_helper = LearningHelper(dynn, optimizer)
 scheduler = create_scheduler(optimizer, new_scheduler_config(cfg))
-for idx, batch in enumerate(loaders[0]):
-    batch = batch.to(cfg.accelerator)
-    loss, things_of_interest = learning_helper.get_warmup_loss(batch, batch.y)
-    losses = things_of_interest['losses']
-    mlflow_dict = {f'loss_{idx}': float(v) for idx, v in enumerate(losses)}
-    mlflow.log_metrics(mlflow_dict, idx)
-    loss.backward()
-    learning_helper.optimizer.step()
+
+learning_helper = LearningHelper(dynn, optimizer, scheduler, cfg)
+learning_helper.train_warmup(loaders[0], loaders[1])
 
 

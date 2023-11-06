@@ -97,7 +97,7 @@ def load_pretrained_model_cfg(cfg):
 
 
 def init_model_from_pretrained(model, pretrained_dir,
-                               freeze_main=False, reset_prediction_head=True):
+                               freeze_main=False, reset_prediction_head=True, freeze_final_head=False):
     """ Copy model parameters from pretrained model except the prediction head.
 
     Args:
@@ -132,10 +132,16 @@ def init_model_from_pretrained(model, pretrained_dir,
     # Overwrite entries in the existing state dict.
     model_dict.update(pretrained_dict)
     # Load the new state dict.
-    model.load_state_dict(model_dict)
-
+    params_with_issues = model.load_state_dict(model_dict, strict=False)
+    print("Missing keys:", params_with_issues.missing_keys)
+    print("Unexpected_keys keys:", params_with_issues.unexpected_keys)
     if freeze_main:
         for key, param in model.named_parameters():
-            if not key.startswith('post_mp'):
+            if not freeze_final_head:
+                if not key.startswith('post_mp'):
+                    param.requires_grad = False
+            else:
                 param.requires_grad = False
+    trainable_params = list(map(lambda x: x[0], filter(lambda x: x[1].requires_grad, list(model.named_parameters()))))
+    print(f'Trainable params: {trainable_params}')
     return model
