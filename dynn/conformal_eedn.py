@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from utils import free 
+from grit.utils import free
 
 
 

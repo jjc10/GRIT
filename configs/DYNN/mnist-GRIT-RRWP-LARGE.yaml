@@ -1,19 +1,18 @@
-out_dir: results
+out_dir: dynn_results
 metric_best: accuracy
 tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
-num_workers: 8
 mlflow:
   use: True
   project: Exp
-  name: cifar10-GRIT-RRWP-LARGE
+  name: mnist-GRIT-RRWP
 wandb:
   use: False
-  project: CIFAR10
+  project: MNIST
 dataset:
-  pe_transform_on_the_fly: True
+  pe_transform_on_the_fly: True # compute PE on the fly to save memory when launching many experiments in parallel
   format: PyG-GNNBenchmarkDataset
-  name: CIFAR10
+  name: MNIST
   task: graph
   task_type: classification
   transductive: False
@@ -28,16 +27,14 @@ posenc_RRWP:
   ksteps: 18
   add_identity: True
   add_node_attr: False
-  add_inverse: False
 train:
-  auto_resume: True
   mode: custom
-  batch_size: 32
-  eval_period: 3
-  ckpt_best: True
-  ckpt_clean: False
-  ckpt_period: 1
+  batch_size: 64
+  eval_period: 1
+  ckpt_period: 2
   enable_ckpt: True  # Checkpointing can now be disabled to save I/O when e.g. just benchmarking.
+  ckpt_best: True  # WARNING: Checkpoint every epoch a better model is found may increase I/O significantly.
+  ckpt_clean: True
 model:
   type: GritTransformer
   loss_fun: cross_entropy
@@ -45,13 +42,14 @@ model:
   graph_pooling: mean
 gt:  # Hyperparameters optimized for ~100k budget.
   layer_type: GritTransformer
-  layers: 4
+  layers: 5
   n_heads: 4
   dim_hidden: 52  # `gt.dim_hidden` must match `gnn.dim_inner`
   dropout: 0.1
-  attn_dropout: 0.5
   layer_norm: False
   batch_norm: True
+  update_e: True
+  attn_dropout: 0.5
   attn:
     clamp: 5.
     act: 'relu'
@@ -62,7 +60,7 @@ gt:  # Hyperparameters optimized for ~100k budget.
 gnn:
   head: default
   layers_pre_mp: 0
-  layers_post_mp: 2
+  layers_post_mp: 3
   dim_inner: 52  # `gt.dim_hidden` must match `gnn.dim_inner`
   batchnorm: False
   act: relu
@@ -71,9 +69,12 @@ gnn:
   normalize_adj: False
 optim:
   clip_grad_norm: True
-  optimizer: adamW
-  weight_decay: 1e-5
-  base_lr: 0.001
-  max_epoch: 100
+  optimizer: sgd
+  weight_decay: 5e-4
+  base_lr: 0.002
+  max_epoch: 7
   scheduler: cosine_with_warmup
   num_warmup_epochs: 3
+pretrained:
+  dir: results/mnist-GRIT-RRWP-LARGE
+  freeze_main: True

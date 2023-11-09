@@ -31,7 +31,7 @@ posenc_RRWP:
 train:
   auto_resume: True
   mode: custom
-  batch_size: 32
+  batch_size: 64
   enable_ckpt: True  # Checkpointing can now be disabled to save I/O when e.g. just benchmarking.
   ckpt_best: True  # WARNING: Checkpoint every epoch a better model is found may increase I/O significantly.
   ckpt_clean: True
@@ -68,12 +68,13 @@ gnn:
   normalize_adj: False
 optim:
   clip_grad_norm: True
-  optimizer: adamW
-  weight_decay: 1e-5
-  base_lr: 0.0001
+  optimizer: sgd
+  weight_decay: 5e-4
+  base_lr: 0.002
   max_epoch: 200
+  momentum: 0.9
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 2
+  num_warmup_epochs: 5
 pretrained:
   dir: results/cifar10-GRIT-RRWP
   freeze_main: True

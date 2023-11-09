@@ -13,6 +13,8 @@ import time
 import shutil
 import numpy as np
 import random
+from torch.utils.data.sampler import SubsetRandomSampler
+from torch_geometric.loader.dataloader import DataLoader
 
 def negate_edge_index(edge_index, batch=None):
     """Negate batched sparse adjacency matrices given by edge indices.
@@ -282,3 +284,26 @@ def fix_the_seed(seed):
     torch.cuda.manual_seed(seed)
     torch.backends.cudnn.deterministic = True
 
+def free(torch_tensor):
+    return torch_tensor.cpu().detach().numpy()
+
+def split_dataloader_in_n(data_loader, n):
+    try:
+        indices = data_loader.sampler.indices
+    except:
+        indices = list(range(len(data_loader.sampler)))
+    dataset = data_loader.dataset
+    list_indices = np.array_split(np.array(indices),n)
+    batch_size = data_loader.batch_size
+    n_loaders = []
+    for i in range(n):
+        sampler = SubsetRandomSampler(list_indices[i])
+        sub_loader = DataLoader(dataset, batch_size=batch_size, sampler=sampler)
+        n_loaders.append(sub_loader)
+    return n_loaders
+
+def aggregate_dicts(dict, key, val):
+    if  key not in dict:
+        dict[key] = [val]
+    else:
+        dict[key].append(val)

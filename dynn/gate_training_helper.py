@@ -15,7 +15,7 @@ class InvalidLossContributionModeException(Exception):
 class GateTrainingHelper:
     def __init__(self, net: nn.Module, gate_objective: GateObjective, G: int, device) -> None:
         self.net = net
-        self.device  = device
+        self.device = device
         self.set_ratios([1 for _ in range(G)])
 
         self.gate_criterion = nn.BCEWithLogitsLoss(reduction='none')
@@ -45,31 +45,27 @@ class GateTrainingHelper:
     def set_ratios(self, pos_weights):
         self.pos_weights = torch.Tensor(pos_weights).to(self.device)
 
-
-
     def get_loss(self, inputs: torch.Tensor, targets: torch.tensor):
-        final_head, intermediate_zs = self.net.module.forward_features(inputs)
-        final_logits = self.net.module.head(final_head)
+        final_logits, inter_outs = self.net.forward(inputs)
         intermediate_losses = []
         gate_logits = []
         intermediate_logits = []
 
-        optimal_exit_count_per_gate = dict.fromkeys(range(len(self.net.module.intermediate_heads)), 0) # counts number of times a gate was selected as the optimal gate for exiting
+        optimal_exit_count_per_gate = dict.fromkeys(range(self.net.num_of_gates), 0) # counts number of times a gate was selected as the optimal gate for exiting
 
-        for l, intermediate_head in enumerate(self.net.module.intermediate_heads):
-            current_logits = intermediate_head(intermediate_zs[l])
-            intermediate_logits.append(current_logits)
-            current_gate_logits = self.net.module.get_gate_prediction(l, current_logits)
+        for l, inter_out in enumerate(inter_outs):
+            intermediate_logits.append(inter_out)
+            current_gate_logits = self.net.get_gate_prediction(l, inter_out)
             gate_logits.append(current_gate_logits)
-            pred_loss = self.predictor_criterion(current_logits, targets)
-            ic_loss = self.net.module.normalized_cost_per_exit[l]
-            level_loss = pred_loss + self.net.module.CE_IC_tradeoff * ic_loss
+            pred_loss = self.predictor_criterion(inter_out, targets)
+            ic_loss = self.net.cost_per_exit()[l]
+            level_loss = pred_loss + self.net.CE_IC_tradeoff * ic_loss
             level_loss = level_loss[:, None]
             intermediate_losses.append(level_loss)
         # add the final head as an exit to optimize for
         final_pred_loss = self.predictor_criterion(final_logits, targets)
         final_ic_loss = 1
-        final_level_loss = final_pred_loss + self.net.module.CE_IC_tradeoff * final_ic_loss
+        final_level_loss = final_pred_loss + self.net.CE_IC_tradeoff * final_ic_loss
         final_level_loss = final_level_loss[:, None]
         intermediate_losses.append(final_level_loss)
 
@@ -78,7 +74,7 @@ class GateTrainingHelper:
             count_exit_at_level = torch.sum(gate_target == gate_level).item()
             optimal_exit_count_per_gate[gate_level] += count_exit_at_level
         things_of_interest = {'exit_count_optimal_gate': optimal_exit_count_per_gate}
-        gate_target_one_hot = torch.nn.functional.one_hot(gate_target, len(self.net.module.intermediate_heads) + 1)
+        gate_target_one_hot = torch.nn.functional.one_hot(gate_target, len(self.net.intermediate_heads) + 1)
         gate_logits = torch.cat(gate_logits, dim=1)
         loss, correct_exit_count = self._get_exit_subsequent_loss(gate_target_one_hot, gate_logits)
         things_of_interest = things_of_interest | {'intermediate_logits': intermediate_logits, 'final_logits':final_logits, 'correct_exit_count': correct_exit_count}
@@ -97,7 +93,7 @@ class GateTrainingHelper:
 
         gate_loss = torch.mean(gate_loss * multiplier)
         # compute gate accuracies
-        actual_exits_binary = torch.nn.functional.sigmoid(gate_logits) >= 0.5
+        actual_exits_binary = torch.sigmoid(gate_logits) >= 0.5
         correct_exit_count += accuracy_score(actual_exits_binary.flatten().cpu(), hot_encode_subsequent.double().flatten().cpu(), normalize=False)
 
         return gate_loss, correct_exit_count

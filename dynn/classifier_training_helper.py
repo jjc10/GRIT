@@ -15,7 +15,7 @@ class InvalidLossContributionModeException(Exception):
     pass
 
 class ClassifierTrainingHelper:
-    def __init__(self, net: nn.Module, loss_contribution_mode: LossContributionMode,G: int, device) -> None:
+    def __init__(self, net: nn.Module, loss_contribution_mode: LossContributionMode, G: int, device) -> None:
         self.net = net
         self.device = device
         self.loss_contribution_mode = loss_contribution_mode
@@ -36,27 +36,25 @@ class ClassifierTrainingHelper:
     def set_fractions(self, fractions):
         self.fractions = torch.Tensor(fractions).to(self.device)
 
-    def get_loss(self, inputs: torch.Tensor, targets: torch.tensor, compute_hamming = False):
+    def get_loss(self, inputs: torch.Tensor, targets: torch.tensor):
         intermediate_logits = [] # logits from the intermediate classifiers
         num_exits_per_gate = []
-        final_head, intermediate_outs = self.net.module.forward_features(inputs)
-        final_logits = self.net.module.head(final_head)
-        prob_gates = torch.zeros((inputs.shape[0], 1)).to(inputs.device)
+        final_logits, intermediate_outs = self.net.forward(inputs)
+        prob_gates = torch.zeros((targets.shape[0], 1)).to(self.device)
         gated_y_logits = torch.zeros_like(final_logits) # holds the accumulated predictions in a single tensor
         sample_exit_level_map = torch.zeros_like(targets) # holds the exit level of each prediction
-        past_exits = torch.zeros((inputs.shape[0], 1)).to(inputs.device)
+        past_exits = torch.zeros((targets.shape[0], 1)).to(self.device)
 
         # lists for weighted mode
         p_exit_at_gate_list = []
         loss_per_gate_list = []
-        G = torch.zeros((targets.shape[0], 1)).to(inputs.device) # holds the g's, the sigmoided gate outputs
-        for l, intermediate_head in enumerate(self.net.module.intermediate_heads):
-            current_logits = intermediate_head(intermediate_outs[l])
-            intermediate_logits.append(current_logits)
+        G = torch.zeros((targets.shape[0], 1)).to(self.device) # holds the g's, the sigmoided gate outputs
+        for l, inter_out in enumerate(intermediate_outs):
+            intermediate_logits.append(inter_out)
             # TODO: Freezing the gate can be done in learning helper when we switch phase.
             with torch.no_grad(): # Prevent backpropagation to gates.
-                    exit_gate_logit = self.net.module.get_gate_prediction(l, current_logits)
-            g = torch.nn.functional.sigmoid(exit_gate_logit) # g
+                exit_gate_logit = self.net.get_gate_prediction(l, inter_out)
+            g = torch.sigmoid(exit_gate_logit) # g
         
             no_exit_previous_gates_prob = torch.prod(1 - prob_gates, axis=1)[:,None] # prod (1-g)
             
@@ -64,11 +62,11 @@ class ClassifierTrainingHelper:
                 current_gate_activation_prob = torch.clip(g/no_exit_previous_gates_prob, min=0, max=1)
             elif self.loss_contribution_mode == LossContributionMode.WEIGHTED:
                 sum_previous_gs = torch.sum(G, dim=1)[:, None]
-                p_exit_at_gate = torch.max(torch.zeros((targets.shape[0], 1)).to(inputs.device), torch.min(g, 1 - sum_previous_gs))
+                p_exit_at_gate = torch.max(torch.zeros((targets.shape[0], 1)).to(self.device), torch.min(g, 1 - sum_previous_gs))
                 p_exit_at_gate_list.append(p_exit_at_gate)
                 current_gate_activation_prob = torch.clip(p_exit_at_gate/no_exit_previous_gates_prob, min=0, max=1)
                 G = torch.cat((G, g), dim=1)
-                loss_at_gate = self.classifier_criterion(current_logits, targets)
+                loss_at_gate = self.classifier_criterion(inter_out, targets)
                 loss_per_gate_list.append(loss_at_gate[:, None])
 
             prob_gates = torch.cat((prob_gates, current_gate_activation_prob), dim=1) # gate exits are independent so they won't sum to 1 over all cols
@@ -80,9 +78,9 @@ class ClassifierTrainingHelper:
             # Update past_exists to include the currently exited ones for next iteration
             past_exits = torch.logical_or(current_exit, past_exits)
             # Update early_exit_logits which include all predictions across all layers
-            gated_y_logits = gated_y_logits + torch.mul(current_exit, current_logits)
+            gated_y_logits = gated_y_logits + torch.mul(current_exit, inter_out)
         final_gate_exit = torch.logical_not(past_exits)
-        sample_exit_level_map[final_gate_exit.flatten().nonzero()] = len(self.net.module.intermediate_heads)
+        sample_exit_level_map[final_gate_exit.flatten().nonzero()] = self.net.num_of_gates
         num_exits_per_gate.append(torch.sum(final_gate_exit))
         gated_y_logits = gated_y_logits + torch.mul(final_gate_exit, final_logits) # last gate
         things_of_interest = {
@@ -93,7 +91,7 @@ class ClassifierTrainingHelper:
             'sample_exit_level_map': sample_exit_level_map,
             'gated_y_logits': gated_y_logits}
         if self.loss_contribution_mode == LossContributionMode.WEIGHTED:
-            p_exit_at_gate_T = torch.concatenate(p_exit_at_gate_list, dim=1)
+            p_exit_at_gate_T = torch.cat(p_exit_at_gate_list, dim=1)
             things_of_interest['p_exit_at_gate']=p_exit_at_gate_T
         loss = 0
         if self.loss_contribution_mode == LossContributionMode.SINGLE:
