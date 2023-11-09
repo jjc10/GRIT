@@ -4,7 +4,7 @@ tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
 num_workers: 10
 mlflow:
-  use: False
+  use: True
   project: Exp
   name: cifar10-GRIT-RRWP
 wandb:
@@ -30,10 +30,14 @@ posenc_RRWP:
   add_node_attr: False
   add_inverse: False
 train:
+  auto_resume: True
   mode: custom
-  batch_size: 16
+  batch_size: 32
   eval_period: 1
-  ckpt_period: 100
+  ckpt_best: False
+  ckpt_clean: False
+  ckpt_period: 1
+  enable_ckpt: True  # Checkpointing can now be disabled to save I/O when e.g. just benchmarking.
 model:
   type: GritTransformer
   loss_fun: cross_entropy
@@ -72,4 +76,4 @@ optim:
   base_lr: 0.001
   max_epoch: 200
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 5
+  num_warmup_epochs: 2

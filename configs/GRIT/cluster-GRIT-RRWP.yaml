@@ -32,7 +32,9 @@ train:
   mode: custom
   batch_size: 16
   eval_period: 1
-  ckpt_period: 100
+  ckpt_period: 1
+  enable_ckpt: True
+  ckpt_best: True
 model:
   type: GritTransformer
   loss_fun: weighted_cross_entropy
@@ -70,4 +72,4 @@ optim:
   base_lr: 0.001
   max_epoch: 100
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 5
+  num_warmup_epochs: 1

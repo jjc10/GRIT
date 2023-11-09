@@ -4,8 +4,9 @@ metric_best: mae
 metric_agg: argmin
 tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
+
 mlflow:
-  use: False
+  use: True
   project: Exp
   name: zinc-GRIT-RRWP
 wandb:
@@ -33,7 +34,7 @@ posenc_RRWP:
   add_inverse: False
 train:
   mode: custom
-  batch_size: 32
+  batch_size: 64
   eval_period: 1
   enable_ckpt: True  # Checkpointing can now be disabled to save I/O when e.g. just benchmarking.
   ckpt_best: True  # WARNING: Checkpoint every epoch a better model is found may increase I/O significantly.
@@ -76,8 +77,8 @@ optim:
   clip_grad_norm: True
   optimizer: adamW
   weight_decay: 1e-5
-  base_lr: 1e-3
+  base_lr: 4e-3
   max_epoch: 2000
-  num_warmup_epochs: 50
+  num_warmup_epochs: 1
   scheduler: cosine_with_warmup
   min_lr: 1e-6

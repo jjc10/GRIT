@@ -19,6 +19,9 @@ class SANGraphHead(nn.Module):
     """
 
     def __init__(self, dim_in, dim_out, L=2):
+        self.dim_in = dim_in
+        self.dim_out = dim_out
+        self.L = L
         super().__init__()
         self.deg_scaler = False
         self.fwl = False
