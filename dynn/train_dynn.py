@@ -21,7 +21,7 @@ from torch_geometric.graphgym.optim import create_optimizer, \
     create_scheduler, OptimizerConfig
 from torch_geometric.graphgym.loader import create_loader
 from torch_geometric import seed_everything
-from torch_geometric.graphgym.cmd_args import parse_args
+import argparse
 from torch_geometric.graphgym.model_builder import create_model
 from grit.finetuning import load_pretrained_model_cfg, \
     init_model_from_pretrained
@@ -47,10 +47,25 @@ def set_from_validation(training_helper, val_metrics_dict, freeze_classifier_wit
         pos_weight = (total-count) / count # #0/#1
         pos_weight = min(pos_weight, 5) # clip for stability
         pos_weights.append(pos_weight)
-
-
-
     training_helper.gate_training_helper.set_ratios(pos_weights)
+
+def parse_args():
+    r"""Parses the command line arguments."""
+    parser = argparse.ArgumentParser(description='GraphGym')
+    parser.add_argument('--cfg', dest='cfg_file', type=str, required=True,
+                        help='The configuration file path.')
+    parser.add_argument('--ce_ic_tradeoff', default=0.1, type=float,
+                        help='CE IC tradeoff, the higher the earlier we exit')
+    parser.add_argument('--arch', default='jeidnn', type=str,
+                        help='architecture')
+    parser.add_argument('--repeat', type=int, default=1,
+                        help='The number of repeated jobs.')
+    parser.add_argument('--mark_done', action='store_true',
+                        help='Mark yaml as done after a job has finished.')
+    parser.add_argument('opts', default=None, nargs=argparse.REMAINDER,
+                        help='See graphgym/config.py for remaining options.')
+    return parser.parse_args()
+
 def parse_args_and_cgf():
     args = parse_args()
     # Load config file
@@ -110,7 +125,7 @@ for warmup_epoch in range(cfg.optim.num_warmup_epochs):
     learning_helper.train_single_epoch(loaders[0], warmup_epoch, TrainingPhase.WARMUP)
     val_metrics_dict, best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=warmup_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
 training_phase = TrainingPhase.CLASSIFIER
-for bilevel_epoch in range(0 + 1, cfg.optim.max_epoch):
+for bilevel_epoch in range(warmup_epoch, cfg.optim.max_epoch):
     learning_helper.train_single_epoch(loaders[0], bilevel_epoch, training_phase)
     val_metrics_dict, new_best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=bilevel_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
     store_results = new_best_acc > best_acc
