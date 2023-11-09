@@ -119,16 +119,19 @@ class LearningHelper:
             inputs = batch
             targets = batch.y
             inputs, targets = inputs.to(device), targets.to(device)
-            losses_dict = {}
+            additional_dict = {}
             batch_size = targets.size(0)
             if batch_idx % display_count == 0:
                 total_batches = len(train_loader)
-                print(f'Batch: {batch_idx}/{total_batches}, phase {training_phase}, lr: {self.optimizer.defaults["lr"]}')
+                lr = self.scheduler.get_last_lr()[0] if epoch > 0 else self.optimizer.param_groups[0]['initial_lr']
+                print(f'Batch: {batch_idx}/{total_batches}, phase {training_phase}, lr: {lr}')
+                additional_dict['lr'] = lr
             if training_phase == TrainingPhase.WARMUP:
                 #  we compute the warmup loss
                 loss, things_of_interest = self.get_warmup_loss(inputs, targets)
                 losses = things_of_interest['intermediate_losses']
-                losses_dict = {f'loss_{idx}': float(v) for idx, v in enumerate(losses)}
+                loss_dict = {f'loss_{idx}': float(v) for idx, v in enumerate(losses)}
+                additional_dict = additional_dict | loss_dict
             else:
                 if batch_idx % bilevel_batch_count == 0:
 
@@ -152,7 +155,7 @@ class LearningHelper:
                 prefix_logger='train',
                 metrics_dict=metrics_dict, gates_count=self.net.num_of_gates)
 
-            log_dict = log_dict | losses_dict if bool(losses_dict) else log_dict
+            log_dict = log_dict | additional_dict if bool(additional_dict) else log_dict
             mlflow.log_metrics(log_dict,
                                step=batch_idx +
                                     (epoch * len(train_loader)))
