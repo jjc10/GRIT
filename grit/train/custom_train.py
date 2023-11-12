@@ -16,16 +16,17 @@ import warnings
 from collections import defaultdict
 
 
-def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation):
+def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation, epoch):
     model.train()
     optimizer.zero_grad()
     time_start = time.time()
+    print_freq = 100
+    lr = scheduler.get_last_lr()[0] if epoch > 0 else optimizer.param_groups[0]['initial_lr']
     for iter, batch in enumerate(loader):
         # ipdb.set_trace()
         batch.split = 'train'
         batch.to(torch.device(cfg.device))
         pred, true = model(batch)
-
         if cfg.dataset.name == 'ogbg-code2':
             loss, pred_score = subtoken_cross_entropy(pred, true)
             _true = true
@@ -35,6 +36,8 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation)
             _true = true.detach().to('cpu', non_blocking=True)
             _pred = pred_score.detach().to('cpu', non_blocking=True)
         loss.backward()
+        if iter % print_freq == 0:
+            print(f'Ep {epoch}, batch {iter}/{len(loader)}. loss {loss}, lr {lr}')
         # Parameters update after accumulating gradients for given num. batches.
         if ((iter + 1) % batch_accumulation == 0) or (iter + 1 == len(loader)):
             if cfg.optim.clip_grad_norm:
@@ -48,7 +51,8 @@ def train_epoch(logger, loader, model, optimizer, scheduler, batch_accumulation)
                             time_used=time.time() - time_start,
                             params=cfg.params,
                             dataset_name=cfg.dataset.name)
-        time_start = time.time()
+    time_end = time.time()
+    print(f'Finished epoch in {str(time_end - time_start)}')
 
 
 @torch.no_grad()
@@ -148,7 +152,7 @@ def custom_train(loggers, loaders, model, optimizer, scheduler):
         # with torch.autograd.detect_anomaly():
         start_time = time.perf_counter()
         train_epoch(loggers[0], loaders[0], model, optimizer, scheduler,
-                    cfg.optim.batch_accumulation)
+                    cfg.optim.batch_accumulation, cur_epoch)
         perf[0].append(loggers[0].write_epoch(cur_epoch))
 
         # debug = True

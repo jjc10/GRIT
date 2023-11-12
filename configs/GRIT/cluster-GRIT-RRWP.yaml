@@ -12,6 +12,7 @@ wandb:
 dataset:
   format: PyG-GNNBenchmarkDataset
   name: CLUSTER
+  pe_transform_on_the_fly: True
   task: graph
   task_type: classification
   transductive: False
@@ -30,7 +31,7 @@ posenc_RRWP:
   add_inverse: False
 train:
   mode: custom
-  batch_size: 16
+  batch_size: 8
   eval_period: 1
   ckpt_period: 1
   enable_ckpt: True

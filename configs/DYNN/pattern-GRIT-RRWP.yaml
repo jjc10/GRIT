@@ -1,9 +1,9 @@
-out_dir: results
+out_dir: dynn_results
 metric_best: accuracy-SBM
 tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
 mlflow:
-  use: False
+  use: True
   project: Exp
   name: pattern-GRIT-RRWP
 wandb:
@@ -69,9 +69,12 @@ gnn:
   normalize_adj: False
 optim:
   clip_grad_norm: True
-  optimizer: adamW
-  weight_decay: 1e-5
-  base_lr: 0.0005
-  max_epoch: 100
+  optimizer: sgd
+  weight_decay: 5e-4
+  base_lr: 0.002
+  max_epoch: 12
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 1
+  num_warmup_epochs: 3
+pretrained:
+  dir: results/pattern-GRIT-RRWP
+  freeze_main: True

@@ -92,7 +92,7 @@ model = init_model_from_pretrained(
     model, cfg.pretrained.dir, cfg.pretrained.freeze_main,
     reset_prediction_head=False, freeze_final_head=True
 )
-NUM_CLASSES = 10
+NUM_CLASSES = 2 # Pattern is a binary classification task. MNIST and cifar have 10
 exit_positions = [i for i in range(cfg.gt.layers - 1)]
 dynn = DynnWrapper(grit_transformer=model.model, head_dim_in = cfg.gt.dim_hidden,
                    head_dim_out = NUM_CLASSES, ce_ic_tradeoff=args.ce_ic_tradeoff) # graph gym module wraps around the model.
