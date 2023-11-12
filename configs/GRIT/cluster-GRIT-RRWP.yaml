@@ -3,7 +3,7 @@ metric_best: accuracy-SBM
 tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
 mlflow:
-  use: False
+  use: True
   project: Exp
   name: cluster-GRIT-RRWP
 wandb:
