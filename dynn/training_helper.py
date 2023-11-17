@@ -3,11 +3,13 @@ import copy
 from torch import nn
 import numpy as np
 import mlflow
-from grit.utils import progress_bar, split_dataloader_in_n, aggregate_dicts
-from dynn.log_helper import process_things, aggregate_metrics, log_aggregate_metrics_mlflow, get_path_to_project_root
+from grit.utils import progress_bar, split_dataloader_in_n, aggregate_dicts, get_path_to_project_root
+from dynn.log_helper import process_things, aggregate_metrics, log_aggregate_metrics_mlflow
 from dynn.classifier_training_helper import ClassifierTrainingHelper, LossContributionMode
 from dynn.gate_training_helper import GateTrainingHelper, GateObjective
 from enum import Enum
+from torch_geometric.graphgym.loss import compute_loss
+
 import os
 import pickle as pk
 
@@ -60,6 +62,8 @@ class LearningHelper:
         criterion = nn.CrossEntropyLoss()
         self.optimizer.zero_grad()
         final_logits, intermediate_logits = self.net(batch)
+        final_logits = final_logits[0]
+        intermediate_logits = list(map(lambda l: l[0], intermediate_logits))
         final_loss = criterion(final_logits, targets)  # the grad_fn of this loss should be None if frozen
         num_gates = len(intermediate_logits) + 1
         intermediate_losses = []
@@ -76,36 +80,6 @@ class LearningHelper:
         }
         return loss, things_of_interest
 
-    def train_warmup(self, train_loader, val_loader):
-        self.net.train()
-        metrics_dict = {}
-        for e in range(self.cfg.optim.num_warmup_epochs):
-            for batch_idx, batch in enumerate(train_loader):
-                batch = batch.to(self.cfg.accelerator)
-
-                self.optimizer.zero_grad()
-                loss, things_of_interest = self.get_warmup_loss(batch, batch.y)
-                losses = things_of_interest['intermediate_losses']
-                mlflow_dict = {f'loss_{idx}': float(v) for idx, v in enumerate(losses)}
-                progress_bar(
-                    batch_idx, len(train_loader),
-                    'Epoch: %d, Loss: %.3f' %
-                    (e, loss))
-                metrics_of_batch = process_things(things_of_interest, gates_count=self.net.num_of_gates,
-                                                  targets=batch.y, batch_size=len(batch),
-                                                  cost_per_exit=self.net.cost_per_exit())
-                loss.backward()
-                self.optimizer.step()
-                metrics_dict = aggregate_metrics(metrics_of_batch, metrics_dict, gates_count=self.net.num_of_gates)
-
-                # format the metric ready to be displayed
-                log_dict = log_aggregate_metrics_mlflow(
-                prefix_logger='train',
-                metrics_dict=metrics_dict, gates_count=self.net.num_of_gates)
-                mlflow.log_metrics(mlflow_dict,
-                                   step=batch_idx +
-                                        (e * len(train_loader)))
-            self.scheduler.step()
 
     def train_single_epoch(self, train_loader, epoch, training_phase,
                            bilevel_batch_count=200):

@@ -39,7 +39,9 @@ class ClassifierTrainingHelper:
     def get_loss(self, inputs: torch.Tensor, targets: torch.tensor):
         intermediate_logits = [] # logits from the intermediate classifiers
         num_exits_per_gate = []
-        final_logits, intermediate_outs = self.net.forward(inputs)
+        final_logits, intermediate_logits = self.net.forward(inputs)
+        final_logits = final_logits[0]
+        intermediate_logits = list(map(lambda l: l[0], intermediate_logits))
         prob_gates = torch.zeros((targets.shape[0], 1)).to(self.device)
         gated_y_logits = torch.zeros_like(final_logits) # holds the accumulated predictions in a single tensor
         sample_exit_level_map = torch.zeros_like(targets) # holds the exit level of each prediction
@@ -49,11 +51,10 @@ class ClassifierTrainingHelper:
         p_exit_at_gate_list = []
         loss_per_gate_list = []
         G = torch.zeros((targets.shape[0], 1)).to(self.device) # holds the g's, the sigmoided gate outputs
-        for l, inter_out in enumerate(intermediate_outs):
-            intermediate_logits.append(inter_out)
+        for l, intermediate_logit in enumerate(intermediate_logits):
             # TODO: Freezing the gate can be done in learning helper when we switch phase.
             with torch.no_grad(): # Prevent backpropagation to gates.
-                exit_gate_logit = self.net.get_gate_prediction(l, inter_out)
+                exit_gate_logit = self.net.get_gate_prediction(l, intermediate_logit)
             g = torch.sigmoid(exit_gate_logit) # g
         
             no_exit_previous_gates_prob = torch.prod(1 - prob_gates, axis=1)[:,None] # prod (1-g)
@@ -66,7 +67,7 @@ class ClassifierTrainingHelper:
                 p_exit_at_gate_list.append(p_exit_at_gate)
                 current_gate_activation_prob = torch.clip(p_exit_at_gate/no_exit_previous_gates_prob, min=0, max=1)
                 G = torch.cat((G, g), dim=1)
-                loss_at_gate = self.classifier_criterion(inter_out, targets)
+                loss_at_gate = self.classifier_criterion(intermediate_logit, targets)
                 loss_per_gate_list.append(loss_at_gate[:, None])
 
             prob_gates = torch.cat((prob_gates, current_gate_activation_prob), dim=1) # gate exits are independent so they won't sum to 1 over all cols
@@ -78,7 +79,7 @@ class ClassifierTrainingHelper:
             # Update past_exists to include the currently exited ones for next iteration
             past_exits = torch.logical_or(current_exit, past_exits)
             # Update early_exit_logits which include all predictions across all layers
-            gated_y_logits = gated_y_logits + torch.mul(current_exit, inter_out)
+            gated_y_logits = gated_y_logits + torch.mul(current_exit, intermediate_logit)
         final_gate_exit = torch.logical_not(past_exits)
         sample_exit_level_map[final_gate_exit.flatten().nonzero()] = self.net.num_of_gates
         num_exits_per_gate.append(torch.sum(final_gate_exit))

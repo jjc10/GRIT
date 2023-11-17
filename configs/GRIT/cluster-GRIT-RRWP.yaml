@@ -38,7 +38,7 @@ train:
   ckpt_best: True
 model:
   type: GritTransformer
-  loss_fun: weighted_cross_entropy
+  loss_fun: cross_entropy
   edge_decoding: dot
 gt:  # Hyperparameters optimized for ~500k budget.
   layer_type: GritTransformer

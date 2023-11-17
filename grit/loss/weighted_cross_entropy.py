@@ -21,7 +21,7 @@ def weighted_cross_entropy(pred, true):
         # multiclass
         if pred.ndim > 1:
             pred = F.log_softmax(pred, dim=-1)
-            return F.nll_loss(pred, true, weight=weight), pred
+            return F.nll_loss(pred, true, weight=weight, reduction=cfg.model.size_average), pred
         # binary
         else:
             loss = F.binary_cross_entropy_with_logits(pred, true.float(),

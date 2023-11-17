@@ -307,3 +307,25 @@ def aggregate_dicts(dict, key, val):
         dict[key] = [val]
     else:
         dict[key].append(val)
+
+def get_path_to_project_root():
+    cwd = os.getcwd()
+    root_abs_path_index = cwd.split("/").index("GRIT")
+    return "/".join(os.getcwd().split("/")[:root_abs_path_index + 1])
+def get_abs_path(paths_strings):
+    subpath = "/".join(paths_strings)
+    src_abs_path = get_path_to_project_root()
+    return f'{src_abs_path}/{subpath}/'
+
+def has_warmed_up_model(arch, dataset, num_warmup_epochs):
+    chkpt_path = get_warmup_chkpt_path(arch, dataset, num_warmup_epochs)
+    return os.path.exists(chkpt_path)
+
+def get_warmup_chkpt_path(arch, dataset, num_warmup_epochs):
+    path_to_warmup_folder = get_abs_path(['dynn_results', f'{dataset}-GRIT-RRWP', 'checkpoint_warmup_cluster'])
+    chkpt_name = get_warmup_chkpt_name(arch, dataset, num_warmup_epochs)
+    chkpt_path = f'{path_to_warmup_folder}/{chkpt_name}'
+    return chkpt_path
+def get_warmup_chkpt_name(arch, dataset, num_warmup_epochs):
+    chkpt_name = f'{arch}_{dataset}_{num_warmup_epochs}.pth'
+    return chkpt_name

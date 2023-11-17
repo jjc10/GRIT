@@ -1,4 +1,4 @@
-out_dir: results
+out_dir: dynn_results
 metric_best: accuracy-SBM
 tensorboard_each_run: True  # Log to Tensorboard each run
 accelerator: "cuda:0"
@@ -38,7 +38,7 @@ train:
   ckpt_best: True
 model:
   type: GritTransformer
-  loss_fun: weighted_cross_entropy
+  loss_fun: cross_entropy
   edge_decoding: dot
 gt:  # Hyperparameters optimized for ~500k budget.
   layer_type: GritTransformer
@@ -68,9 +68,12 @@ gnn:
   normalize_adj: False
 optim:
   clip_grad_norm: True
-  optimizer: adamW
-  weight_decay: 1e-5
-  base_lr: 0.001
-  max_epoch: 100
+  optimizer: sgd
+  weight_decay: 5e-4
+  base_lr: 0.002
+  max_epoch: 14
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 1
+  num_warmup_epochs: 4
+pretrained:
+  dir: results/cluster-GRIT-RRWP
+  freeze_main: True

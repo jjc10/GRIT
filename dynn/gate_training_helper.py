@@ -46,15 +46,15 @@ class GateTrainingHelper:
         self.pos_weights = torch.Tensor(pos_weights).to(self.device)
 
     def get_loss(self, inputs: torch.Tensor, targets: torch.tensor):
-        final_logits, inter_outs = self.net.forward(inputs)
+        final_logits, intermediate_logits = self.net.forward(inputs)
+        final_logits = final_logits[0]
+        intermediate_logits = list(map(lambda l: l[0], intermediate_logits))
         intermediate_losses = []
         gate_logits = []
-        intermediate_logits = []
 
         optimal_exit_count_per_gate = dict.fromkeys(range(self.net.num_of_gates), 0) # counts number of times a gate was selected as the optimal gate for exiting
 
-        for l, inter_out in enumerate(inter_outs):
-            intermediate_logits.append(inter_out)
+        for l, inter_out in enumerate(intermediate_logits):
             current_gate_logits = self.net.get_gate_prediction(l, inter_out)
             gate_logits.append(current_gate_logits)
             pred_loss = self.predictor_criterion(inter_out, targets)

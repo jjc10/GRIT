@@ -26,6 +26,6 @@ class GNNInductiveNodeHead(nn.Module):
         return batch.x, batch.y
 
     def forward(self, batch):
-        batch = self.layer_post_mp(batch)
-        pred, label = self._apply_index(batch)
+        out = self.layer_post_mp(batch)
+        pred, label = self._apply_index(out)
         return pred, label

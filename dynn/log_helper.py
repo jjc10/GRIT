@@ -3,9 +3,10 @@ import mlflow
 import os
 import torch
 import scipy
-from grit.utils import free
+from grit.utils import free, get_abs_path
 from calibration import calibration_curve
-
+from torch_geometric.graphgym.loss import compute_loss
+from grit.logger import accuracy_SBM
 def get_display(key, cum_metric):
     if 'correct' in key:
             return  100*np.mean(cum_metric)
@@ -81,7 +82,7 @@ def aggregate_metrics(metrics_to_aggregate_dict, metrics_dict, gates_count):
             metrics_dict[metric_key] = (aggregated_metric, total)
     return metrics_dict
 
-def process_things(things_of_interest, gates_count, targets, batch_size, cost_per_exit):
+def process_things(things_of_interest, gates_count, targets, batch_size, cost_per_exit, custom_metrics = False):
     """
     This function transforms the model outputs to various metrics. The metrics have the format (count, batch_size) to be aggregated later with other metrics.
     """
@@ -113,7 +114,7 @@ def process_things(things_of_interest, gates_count, targets, batch_size, cost_pe
         correct_class_cheating = torch.full(shape_of_correct,False).to(pred_final_head.device)
 
         entries = ['ens_correct_per_gate','correct_per_gate', 'correct_cheating_per_gate','list_correct_per_gate','margins_per_gate',
-                   'p_max_per_gate','entropy_per_gate','pow_entropy_per_gate','ece_per_gate','score_per_gate', 'all_score_per_gate']
+                   'p_max_per_gate','entropy_per_gate','pow_entropy_per_gate','ece_per_gate','score_per_gate', 'all_score_per_gate', 'wacc_per_gate']
         for entry in entries:
             metrics_to_aggregate_dict[entry] = ([0 for _ in range(gates_count)], batch_size)
         for g in range(gates_count):
@@ -145,7 +146,7 @@ def process_things(things_of_interest, gates_count, targets, batch_size, cost_pe
             p_max, entropy, average_ece, margins, entropy_pow = compute_detached_uncertainty_metrics(
                 intermediate_logits[g], targets)
             score = compute_detached_score(intermediate_logits[g], targets)
-            metrics_to_aggregate_dict['list_correct_per_gate'][0][g] = list(free(correct_gate))
+            # metrics_to_aggregate_dict['list_correct_per_gate'][0][g] = list(free(correct_gate))
             metrics_to_aggregate_dict['margins_per_gate'][0][g] = margins
             metrics_to_aggregate_dict['p_max_per_gate'][0][g] = p_max
             metrics_to_aggregate_dict['entropy_per_gate'][0][g] = entropy
@@ -211,10 +212,6 @@ def process_things(things_of_interest, gates_count, targets, batch_size, cost_pe
         metrics_to_aggregate_dict['correct_exit_count'] = (correct_exit_count, batch_size * gates_count) # the correct count is over all gates
 
     return metrics_to_aggregate_dict
-def get_path_to_project_root():
-    cwd = os.getcwd()
-    root_abs_path_index = cwd.split("/").index("GRIT")
-    return "/".join(os.getcwd().split("/")[:root_abs_path_index + 1])
 
 def setup_mlflow(run_name: str, cfg, experiment_name):
     print(run_name)
@@ -225,13 +222,16 @@ def setup_mlflow(run_name: str, cfg, experiment_name):
     mlflow.start_run(run_name=run_name)
     mlflow.log_params(vars(cfg))
 
-def get_abs_path(paths_strings):
-    subpath = "/".join(paths_strings)
-    src_abs_path = get_path_to_project_root()
-    return f'{src_abs_path}/{subpath}/'
 
-def compute_detached_uncertainty_metrics(logits, targets):
-    probs = torch.nn.functional.softmax(logits, dim=1)
+
+def compute_detached_uncertainty_metrics(logits, targets, is_binary_task = False):
+    # if logits.shape
+    if logits.shape[1] == 1: # binary task
+        prob_out = torch.sigmoid(logits)
+        complement = 1 - prob_out
+        probs = torch.squeeze(torch.stack([prob_out, complement], dim = 1))
+    else:
+        probs = torch.nn.functional.softmax(logits, dim=1)
 
     top2prob, _ = torch.topk(probs, 2)
 
@@ -260,9 +260,14 @@ def compute_detached_uncertainty_metrics(logits, targets):
 
 
 
-def compute_detached_score(logits, targets): # score value to obtain conformal intervals
-    probs = torch.nn.functional.softmax(logits, dim=1)
-    s = 1-probs[np.arange(logits.shape[0]),free(targets)]
+def compute_detached_score(logits, targets, is_binary_task = False): # score value to obtain conformal intervals
+    if logits.shape[1] == 1:
+        prob_out = torch.sigmoid(logits)
+        complement = 1 - prob_out
+        probs = torch.squeeze(torch.stack([prob_out, complement], dim = 1))
+    else:
+        probs = torch.nn.functional.softmax(logits, dim=1)
+    s = 1-probs[np.arange(logits.shape[0]), free(targets)]
     return list(free(s))
 
 def compute_cost(num_exits_per_gate, cost_per_exit):
