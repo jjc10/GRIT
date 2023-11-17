@@ -87,9 +87,9 @@ logging.info(cfg)
 dynn = wrapper.to(cfg.accelerator) # move to gpu
 # logging.info('Num parameters: %s', cfg.params)
 # Start training
-experiment_name = 'boosted'
+experiment_name = 'test_boosted'
 
-setup_mlflow("MNIST LARGE", args, experiment_name)
+setup_mlflow("MNIST", args, experiment_name)
 trainable_params = list(filter(lambda x: x.requires_grad, list(dynn.parameters())))
 named_trainable_params = list(map(lambda x: x[0], filter(lambda x: x[1].requires_grad, list(dynn.named_parameters()))))
 print(f'Trainable params after augmenting models: {named_trainable_params}')
@@ -108,7 +108,8 @@ for g in optimizer.param_groups: # manually set the start learning rate
 
 start_time = datetime.datetime.now()
 ckpt_dir_suffix = f'{start_time.month}-{start_time.day}-{start_time.hour}-{start_time.minute}'
-for epoch in range(0, cfg.optim.max_epoch + cfg.optim.num_warmup_epochs):
+print(f'Training for {cfg.optim.max_epoch} epochs')
+for epoch in range(0, cfg.optim.max_epoch):
     train_boosted(wrapper, cfg.accelerator, loaders[0], optimizer, epoch)
     accs = test_boosted(wrapper, loaders[1], cfg.accelerator)
     val_acc_last_inter_head = accs[-2]
