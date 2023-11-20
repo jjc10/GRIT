@@ -16,6 +16,8 @@ class GNNInductiveNodeHead(nn.Module):
 
     def __init__(self, dim_in, dim_out):
         super(GNNInductiveNodeHead, self).__init__()
+        self.dim_in = dim_in
+        self.dim_out = dim_out
         self.layer_post_mp = MLP(
             new_layer_config(dim_in, dim_out, cfg.gnn.layers_post_mp,
                              has_act=False, has_bias=True, cfg=cfg))
@@ -24,6 +26,6 @@ class GNNInductiveNodeHead(nn.Module):
         return batch.x, batch.y
 
     def forward(self, batch):
-        batch = self.layer_post_mp(batch)
-        pred, label = self._apply_index(batch)
+        out = self.layer_post_mp(batch)
+        pred, label = self._apply_index(out)
         return pred, label

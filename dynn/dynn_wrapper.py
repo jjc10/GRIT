@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 from grit.head.san_graph import SANGraphHead
+from grit.head.inductive_node import GNNInductiveNodeHead
 from torch_geometric.graphgym.models import GNNGraphHead
 from gates.gate import Gate, GateType
 from gates.identity_gate import IdentityGate
 from gates.learnable_uncertainty_gate import LearnableUncGate
 import importlib
+import copy
 class DynnWrapper(nn.Module):
 
     def __init__(self, grit_transformer, head_dim_in, head_dim_out, ce_ic_tradeoff):
@@ -21,9 +23,7 @@ class DynnWrapper(nn.Module):
         head = self.grit_transformer.post_mp
         assert self._is_supported_graph_head(type(head).__name__), "Unsupported head type, make sure you add support for it"
         self.intermediate_heads = nn.ModuleList([
-            SANGraphHead(dim_in = head.dim_in,
-                         dim_out=head.dim_out,
-                         L=head.L) if type(head).__name__ == 'SANGraphHead' else GNNGraphHead(self.head_dim_in, self.head_dim_out)
+            self._instantiate_graph_head(head)
             for _ in range(len(self.intermediate_head_positions))])
 
 
@@ -39,12 +39,27 @@ class DynnWrapper(nn.Module):
                         intermediate_head = self.intermediate_heads[layer_idx]
                         inter_out = intermediate_head(batch)[0]
                         inter_outs.append(inter_out)
+                        #TODO see if this is what is breaking stuff.
+                        # inter_batch = copy.deepcopy(batch)
+                        # inter_out = intermediate_head(inter_batch)
+                        # inter_outs.append(inter_out)
             else:
                 batch = module(batch)
-        return batch[0], inter_outs
+        return batch, inter_outs
 
     def _is_supported_graph_head(self, head_class_name):
-        return head_class_name == 'SANGraphHead' or head_class_name == 'GNNGraphHead'
+        return head_class_name == 'SANGraphHead' or head_class_name == 'GNNGraphHead' or head_class_name == 'GNNInductiveNodeHead'
+
+    def _instantiate_graph_head(self, final_head):
+        head_class_name = type(final_head).__name__
+        if head_class_name == 'SANGraphHead':
+            return SANGraphHead(dim_in=final_head.dim_in,
+                                dim_out=final_head.dim_out,
+                                L=final_head.L)
+        elif head_class_name == 'GNNGraphHead':
+            return GNNGraphHead(self.head_dim_in, self.head_dim_out)
+        elif head_class_name == 'GNNInductiveNodeHead':
+            return GNNInductiveNodeHead(dim_in=final_head.dim_in, dim_out=final_head.dim_out)
 
     def get_gate_prediction(self, l, current_logits):
         return self.gates[l](current_logits)

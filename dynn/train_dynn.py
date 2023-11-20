@@ -29,11 +29,26 @@ from dynn_wrapper import DynnWrapper
 from dynn.training_helper import LearningHelper, TrainingPhase
 from main import custom_set_out_dir, new_optimizer_config, new_scheduler_config
 from dynn.log_helper import setup_mlflow
-from grit.utils import fix_the_seed
+from grit.utils import fix_the_seed, get_path_to_project_root, has_warmed_up_model, get_warmup_chkpt_path
 from torch_geometric.graphgym.checkpoint import get_ckpt_dir, get_ckpt_epoch, get_ckpt_path
 
 fix_the_seed(42)
 
+def save_warmup(net, epoch, cfg):
+    state = {
+        'net': net.state_dict(),
+        'epoch': epoch,
+    }
+    checkpoint_path = os.path.join(get_path_to_project_root(), cfg.out_dir)
+
+    this_run_checkpoint_path = os.path.join(checkpoint_path, f'checkpoint_warmup_{cfg.dataset.name}')
+    if not os.path.isdir(this_run_checkpoint_path):
+        os.mkdir(this_run_checkpoint_path)
+    print(f'Saving in {this_run_checkpoint_path}...')
+    torch.save(
+        state,
+        os.path.join(this_run_checkpoint_path,f'ckpt_warmup_{epoch}.pth')
+    )
 def set_from_validation(training_helper, val_metrics_dict, freeze_classifier_with_val=False, alpha_conf = 0.04):
 
     # we fix the 1/0 ratios of gate tasks based on the optimal percent exit in the validation sets
@@ -92,7 +107,15 @@ model = init_model_from_pretrained(
     model, cfg.pretrained.dir, cfg.pretrained.freeze_main,
     reset_prediction_head=False, freeze_final_head=True
 )
-NUM_CLASSES = 10
+dataset_name = cfg.dataset.name.lower()
+NUM_CLASSES = 10 # Pattern is a binary classification task (so head is 1). MNIST and cifar have 10
+if dataset_name in ['mnist', 'cifar10']:
+    NUM_CLASSES = 10
+elif dataset_name == 'pattern':
+    NUM_CLASSES = 1 # binary classification
+elif dataset_name == 'cluster':
+    NUM_CLASSES = 6 # binary classification
+
 exit_positions = [i for i in range(cfg.gt.layers - 1)]
 dynn = DynnWrapper(grit_transformer=model.model, head_dim_in = cfg.gt.dim_hidden,
                    head_dim_out = NUM_CLASSES, ce_ic_tradeoff=args.ce_ic_tradeoff) # graph gym module wraps around the model.
@@ -103,9 +126,11 @@ logging.info(cfg)
 dynn = dynn.to(cfg.accelerator) # move to gpu
 # logging.info('Num parameters: %s', cfg.params)
 # Start training
-experiment_name = 'TEST_CLUSTER_FIX'
 
-setup_mlflow(f"TEST_CLUSTER_FIX_{str(args.ce_ic_tradeoff)}", args, experiment_name)
+ce_ic_tradeoff = args.ce_ic_tradeoff
+experiment_name = f'jeidnn_{dataset_name}_{ce_ic_tradeoff}'
+setup_mlflow(experiment_name, args, f'jeidnn_{dataset_name}')
+
 trainable_params = list(filter(lambda x: x.requires_grad, list(dynn.parameters())))
 named_trainable_params = list(map(lambda x: x[0], filter(lambda x: x[1].requires_grad, list(dynn.named_parameters()))))
 print(f'Trainable params after augmenting models: {named_trainable_params}')
@@ -121,11 +146,19 @@ best_acc = 0
 
 for g in optimizer.param_groups: # manually set the start learning rate
     g['lr'] = cfg.optim.base_lr
-for warmup_epoch in range(cfg.optim.num_warmup_epochs):
-    learning_helper.train_single_epoch(loaders[0], warmup_epoch, TrainingPhase.WARMUP)
-    val_metrics_dict, best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=warmup_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
+if has_warmed_up_model(args.arch, dataset_name, cfg.optim.num_warmup_epochs - 1):
+    ckpt_name = get_warmup_chkpt_path(args.arch, dataset_name, cfg.optim.num_warmup_epochs - 1)
+    checkpoint = torch.load(ckpt_name)
+    missing_keys, unexpected_keys = learning_helper.net.load_state_dict(checkpoint['net'], strict=True)
+    warmup_epoch = cfg.optim.num_warmup_epochs
+    print("Skipping warmup as a checkpoint was already found")
+else:
+    for warmup_epoch in range(cfg.optim.num_warmup_epochs):
+        learning_helper.train_single_epoch(loaders[0], warmup_epoch, TrainingPhase.GATE)
+        val_metrics_dict, best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=warmup_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
+
 training_phase = TrainingPhase.CLASSIFIER
-for bilevel_epoch in range(warmup_epoch, cfg.optim.max_epoch):
+for bilevel_epoch in range(warmup_epoch, cfg.optim.max_epoch): # max_epoch is bound for both warmup + bilevel
     learning_helper.train_single_epoch(loaders[0], bilevel_epoch, training_phase)
     val_metrics_dict, new_best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=bilevel_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
     store_results = new_best_acc > best_acc
