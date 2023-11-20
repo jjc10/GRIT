@@ -308,6 +308,25 @@ def aggregate_dicts(dict, key, val):
     else:
         dict[key].append(val)
 
+
+def save_model_checkpoint(net, gated_acc, epoch, cfg, ckpt_dir_name):
+    state = {
+        'net': net.state_dict(),
+        'acc': gated_acc,
+        'epoch': epoch,
+    }
+    checkpoint_path = os.path.join(get_path_to_project_root(), cfg.out_dir)
+    print(f'Saving in {checkpoint_path}...')
+    this_run_checkpoint_path = os.path.join(checkpoint_path, ckpt_dir_name)
+    if not os.path.isdir(this_run_checkpoint_path):
+        os.mkdir(this_run_checkpoint_path)
+    torch.save(
+        state,
+        os.path.join(this_run_checkpoint_path,f'ckpt_{gated_acc}.pth')
+    )
+
+
+
 def get_path_to_project_root():
     cwd = os.getcwd()
     root_abs_path_index = cwd.split("/").index("GRIT")

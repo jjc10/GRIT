@@ -77,7 +77,7 @@ class GateTrainingHelper:
         gate_target_one_hot = torch.nn.functional.one_hot(gate_target, len(self.net.intermediate_heads) + 1)
         gate_logits = torch.cat(gate_logits, dim=1)
         loss, correct_exit_count = self._get_exit_subsequent_loss(gate_target_one_hot, gate_logits)
-        things_of_interest = things_of_interest | {'intermediate_logits': intermediate_logits, 'final_logits':final_logits, 'correct_exit_count': correct_exit_count}
+        things_of_interest = things_of_interest | {'intermediate_logits': intermediate_logits, 'final_logits':final_logits, 'correct_exit_count': correct_exit_count, 'losses_per_gate': intermediate_losses}
         return loss, things_of_interest
 
     def _get_exit_subsequent_loss(self, gate_target_one_hot, gate_logits):

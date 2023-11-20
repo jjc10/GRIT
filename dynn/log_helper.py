@@ -4,9 +4,10 @@ import os
 import torch
 import scipy
 from grit.utils import free, get_abs_path
-from calibration import calibration_curve
-from torch_geometric.graphgym.loss import compute_loss
-from grit.logger import accuracy_SBM
+
+from grit.utils import free
+from dynn.calibration import calibration_curve
+
 def get_display(key, cum_metric):
     if 'correct' in key:
             return  100*np.mean(cum_metric)

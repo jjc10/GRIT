@@ -130,6 +130,7 @@ dynn = dynn.to(cfg.accelerator) # move to gpu
 ce_ic_tradeoff = args.ce_ic_tradeoff
 experiment_name = f'jeidnn_{dataset_name}_{ce_ic_tradeoff}'
 setup_mlflow(experiment_name, args, f'jeidnn_{dataset_name}')
+
 trainable_params = list(filter(lambda x: x.requires_grad, list(dynn.parameters())))
 named_trainable_params = list(map(lambda x: x[0], filter(lambda x: x[1].requires_grad, list(dynn.named_parameters()))))
 print(f'Trainable params after augmenting models: {named_trainable_params}')
