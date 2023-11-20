@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from grit.head.san_graph import SANGraphHead
 from torch_geometric.graphgym.models import GNNGraphHead
-from gradient_rescale import GradientRescaleFunction
+from dynn.gradient_rescale import GradientRescaleFunction
 import numpy as np
 
 class BoostedWrapper(nn.Module):

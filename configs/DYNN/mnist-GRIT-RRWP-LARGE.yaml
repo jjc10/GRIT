@@ -72,9 +72,9 @@ optim:
   optimizer: sgd
   weight_decay: 5e-4
   base_lr: 0.002
-  max_epoch: 7
+  max_epoch: 9
   scheduler: cosine_with_warmup
-  num_warmup_epochs: 3
+  num_warmup_epochs: 4
 pretrained:
   dir: results/mnist-GRIT-RRWP-LARGE
   freeze_main: True
