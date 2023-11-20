@@ -207,8 +207,10 @@ class LearningHelper:
             average_trials_log_dict[k] = np.mean(v)
 
         gated_acc = average_trials_log_dict[mode+'/gated_acc']
+        total_cost = average_trials_log_dict[mode+'/total_cost']
         average_trials_log_dict[mode+'/test_acc']= gated_acc
         mlflow.log_metrics(average_trials_log_dict, step=epoch)
+        print(f'Epoch {epoch}. Gated acc {gated_acc}. Cost {total_cost}')
         # Save checkpoint.
         if gated_acc > best_acc and mode == 'val':
 

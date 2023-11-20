@@ -4,7 +4,7 @@ import os
 import torch
 import scipy
 from grit.utils import free
-from calibration import calibration_curve
+from dynn.calibration import calibration_curve
 
 def get_display(key, cum_metric):
     if 'correct' in key:

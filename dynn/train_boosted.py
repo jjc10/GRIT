@@ -1,5 +1,6 @@
 import sys
 import os
+import datetime
 # THIS IS NEEDED SO IMPORTS WORK PROPERLY. FIX PERMANENTLY BY ADDRESSING IMPORTS WITHOUT RELYING ON INTELLIJ MODIFYING THE PATH
 cwd = os.getcwd()
 root_abs_path_index = cwd.split("/").index("GRIT")
@@ -26,37 +27,21 @@ from torch_geometric.graphgym.model_builder import create_model
 from grit.finetuning import load_pretrained_model_cfg, \
     init_model_from_pretrained
 from dynn_wrapper import DynnWrapper
-from dynn.training_helper import LearningHelper, TrainingPhase
+from boosted_wrapper import BoostedWrapper
+from boosted_training_helper import get_boosted_loss, train_boosted, test_boosted
 from main import custom_set_out_dir, new_optimizer_config, new_scheduler_config
 from dynn.log_helper import setup_mlflow
-from grit.utils import fix_the_seed
+from grit.utils import fix_the_seed, save_model_checkpoint
 from torch_geometric.graphgym.checkpoint import get_ckpt_dir, get_ckpt_epoch, get_ckpt_path
 
 fix_the_seed(42)
-
-def set_from_validation(training_helper, val_metrics_dict, freeze_classifier_with_val=False, alpha_conf = 0.04):
-
-    # we fix the 1/0 ratios of gate tasks based on the optimal percent exit in the validation sets
-
-    exit_count_optimal_gate = val_metrics_dict['exit_count_optimal_gate'] # ({0: 0, 1: 0, 2: 0, 3: 0, 4: 6, 5: 72}, 128)
-    total = exit_count_optimal_gate[1]
-    pos_weights = []
-    pos_weights_previous = []
-    for gate, count in exit_count_optimal_gate[0].items():
-        count = max(count, 0.1)
-        pos_weight = (total-count) / count # #0/#1
-        pos_weight = min(pos_weight, 5) # clip for stability
-        pos_weights.append(pos_weight)
-    training_helper.gate_training_helper.set_ratios(pos_weights)
 
 def parse_args():
     r"""Parses the command line arguments."""
     parser = argparse.ArgumentParser(description='GraphGym')
     parser.add_argument('--cfg', dest='cfg_file', type=str, required=True,
                         help='The configuration file path.')
-    parser.add_argument('--ce_ic_tradeoff', default=0.1, type=float,
-                        help='CE IC tradeoff, the higher the earlier we exit')
-    parser.add_argument('--arch', default='jeidnn', type=str,
+    parser.add_argument('--arch', default='boosted', type=str,
                         help='architecture')
     parser.add_argument('--repeat', type=int, default=1,
                         help='The number of repeated jobs.')
@@ -94,18 +79,17 @@ model = init_model_from_pretrained(
 )
 NUM_CLASSES = 10
 exit_positions = [i for i in range(cfg.gt.layers - 1)]
-dynn = DynnWrapper(grit_transformer=model.model, head_dim_in = cfg.gt.dim_hidden,
-                   head_dim_out = NUM_CLASSES, ce_ic_tradeoff=args.ce_ic_tradeoff) # graph gym module wraps around the model.
-dynn.set_intermediate_heads(exit_positions)
-dynn.set_learnable_gates(exit_positions)
+wrapper = BoostedWrapper(grit_transformer=model.model, head_dim_in = cfg.gt.dim_hidden,
+                         head_dim_out = NUM_CLASSES)
+wrapper.set_intermediate_heads(exit_positions)
 logging.info(model)
 logging.info(cfg)
-dynn = dynn.to(cfg.accelerator) # move to gpu
+dynn = wrapper.to(cfg.accelerator) # move to gpu
 # logging.info('Num parameters: %s', cfg.params)
 # Start training
-experiment_name = 'TEST_CLUSTER_FIX'
+experiment_name = 'test_boosted'
 
-setup_mlflow(f"TEST_CLUSTER_FIX_{str(args.ce_ic_tradeoff)}", args, experiment_name)
+setup_mlflow("MNIST", args, experiment_name)
 trainable_params = list(filter(lambda x: x.requires_grad, list(dynn.parameters())))
 named_trainable_params = list(map(lambda x: x[0], filter(lambda x: x[1].requires_grad, list(dynn.named_parameters()))))
 print(f'Trainable params after augmenting models: {named_trainable_params}')
@@ -113,23 +97,26 @@ optimizer = create_optimizer(iter(trainable_params),
                              new_optimizer_config(cfg))
 scheduler = create_scheduler(optimizer, new_scheduler_config(cfg))
 
-learning_helper = LearningHelper(dynn, optimizer, scheduler, cfg)
+
 
 bilevel_batch_count = 200
-best_acc = 0
+best_val_acc = 0
 
 
 for g in optimizer.param_groups: # manually set the start learning rate
     g['lr'] = cfg.optim.base_lr
-for warmup_epoch in range(cfg.optim.num_warmup_epochs):
-    learning_helper.train_single_epoch(loaders[0], warmup_epoch, TrainingPhase.WARMUP)
-    val_metrics_dict, best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=warmup_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
-training_phase = TrainingPhase.CLASSIFIER
-for bilevel_epoch in range(warmup_epoch, cfg.optim.max_epoch):
-    learning_helper.train_single_epoch(loaders[0], bilevel_epoch, training_phase)
-    val_metrics_dict, new_best_acc, _ = learning_helper.evaluate(best_acc, loaders[1], epoch=bilevel_epoch, mode='val', arch=args.arch, experiment_name=experiment_name)
-    store_results = new_best_acc > best_acc
-    learning_helper.evaluate(best_acc, loaders[2], epoch=bilevel_epoch, mode='test', arch=args.arch, experiment_name=experiment_name, store_results=True)
-    set_from_validation(learning_helper, val_metrics_dict)
+
+start_time = datetime.datetime.now()
+ckpt_dir_suffix = f'{start_time.month}-{start_time.day}-{start_time.hour}-{start_time.minute}'
+print(f'Training for {cfg.optim.max_epoch} epochs')
+for epoch in range(0, cfg.optim.max_epoch):
+    train_boosted(wrapper, cfg.accelerator, loaders[0], optimizer, epoch)
+    accs = test_boosted(wrapper, loaders[1], cfg.accelerator)
+    val_acc_last_inter_head = accs[-2]
+    if val_acc_last_inter_head > best_val_acc:
+        print(f"Increase in validation accuracy to {val_acc_last_inter_head} of last trainable head of boosted, serializing model")
+        best_val_acc = val_acc_last_inter_head
+        save_model_checkpoint(wrapper, best_val_acc, epoch, cfg, f'boosted')    # stored_metrics_test = test(epoch)
+    scheduler.step()
 
 
